@@ -263,6 +263,40 @@ function test_constraint_name_affine()
     return
 end
 
+function test_constraint_name_nonlinear()
+    model = MadNLP.Optimizer()
+    x = MOI.add_variable(model)
+    y = MOI.add_variable(model)
+    f = MOI.ScalarNonlinearFunction(:*, Any[x, y])
+    ci = MOI.add_constraint(model, f, MOI.LessThan(5.0))
+    MOI.set(model, MOI.ConstraintName(), ci, "nl_xy")
+    @test MOI.get(model, MOI.ConstraintName(), ci) == "nl_xy"
+    @test MOI.get(model, typeof(ci), "nl_xy") == ci
+    return
+end
+
+function test_constraint_name_unsupported_for_variable_bounds()
+    model = MadNLP.Optimizer()
+    x = MOI.add_variable(model)
+    bound_ci = MOI.add_constraint(model, x, MOI.GreaterThan(0.0))
+    @test !MOI.supports(model, MOI.ConstraintName(), typeof(bound_ci))
+    return
+end
+
+function test_constraint_name_inverse_lookup_type_filter()
+    model = MadNLP.Optimizer()
+    x = MOI.add_variable(model)
+    f = MOI.ScalarAffineFunction([MOI.ScalarAffineTerm(1.0, x)], 0.0)
+    ci_lin = MOI.add_constraint(model, f, MOI.LessThan(1.0))
+    MOI.set(model, MOI.ConstraintName(), ci_lin, "shared")
+    # Lookup with the matching type returns the CI.
+    @test MOI.get(model, typeof(ci_lin), "shared") == ci_lin
+    # Lookup with a different CI type returns nothing.
+    OtherCI = MOI.ConstraintIndex{MOI.ScalarNonlinearFunction, MOI.LessThan{Float64}}
+    @test MOI.get(model, OtherCI, "shared") === nothing
+    return
+end
+
 end
 
 TestMOIWrapper.runtests()
