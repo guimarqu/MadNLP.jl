@@ -513,6 +513,23 @@ function test_validate_example3_mixed()
     return
 end
 
+function test_validate_example4_bound_multipliers()
+    model = JuMP.Model(() ->
+        MadNLP.Optimizer(kkt_system = MadNLP.SparseUnreducedKKTSystem))
+    JuMP.set_attribute(model, "max_iter", 1)
+    JuMP.set_attribute(model, "print_level", MadNLP.ERROR)
+    JuMP.@variable(model, 0 <= x <= 100, base_name = "x")
+    JuMP.@variable(model, -50 <= y <= 50, base_name = "y")
+    JuMP.@objective(model, Min, (x - 3)^2 + (y + 2)^2)
+    JuMP.optimize!(model)
+    opt = JuMP.unsafe_backend(model)
+    solver = opt.solver
+    aug_lbl = MadNLPMOI.kkt_row_labels(solver)
+    @test aug_lbl == ["x", "y", "zL[x]", "zL[y]", "zU[x]", "zU[y]"]
+    @test size(solver.kkt.aug_com, 1) == length(aug_lbl)
+    return
+end
+
 end
 
 TestMOIWrapper.runtests()
