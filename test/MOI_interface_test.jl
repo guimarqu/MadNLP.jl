@@ -3,6 +3,7 @@ module TestMOIWrapper
 using MadNLP
 using Test
 
+import JuMP
 using MathOptInterface
 const MOI = MathOptInterface
 const MadNLPMOI = Base.get_extension(MadNLP, :MadNLPMOI)
@@ -393,6 +394,28 @@ function test_get_names_helpers()
     MOI.optimize!(model)
     @test MadNLPMOI.get_variable_names(model) == ["alpha"]
     @test MadNLPMOI.get_constraint_names(model) == String[]
+    return
+end
+
+function test_kkt_row_labels_sparse_qp()
+    model = JuMP.Model(MadNLP.Optimizer)
+    JuMP.set_attribute(model, "max_iter", 1)
+    JuMP.set_attribute(model, "print_level", MadNLP.ERROR)
+    JuMP.@variable(model, x, base_name = "x")
+    JuMP.@variable(model, y, base_name = "y")
+    JuMP.@constraint(model, c1, 5*x + 0.1*y >= 1)
+    JuMP.@constraint(model, c2, x - 100*y <= 50)
+    JuMP.@objective(model, Min, 1000*x^2 + 0.01*y^2 + 7*x*y)
+    JuMP.optimize!(model)
+    opt = JuMP.unsafe_backend(model)
+    labels = MadNLPMOI.kkt_row_labels(opt.solver)
+    @test length(labels) == 6
+    @test labels[1] == "x"
+    @test labels[2] == "y"
+    @test labels[3] == "slack[c1]"
+    @test labels[4] == "slack[c2]"
+    @test labels[5] == "λ[c1]"
+    @test labels[6] == "λ[c2]"
     return
 end
 

@@ -1914,3 +1914,66 @@ Return the constraint names in evaluator row order. Returns an empty
 vector if no model has been built yet.
 """
 get_constraint_names(opt::Optimizer) = collect(_names_of(opt.nlp).con_names)
+
+### KKT row/column labels
+
+# Map an index in the cb's free-variable space (1..cb.nvar) to a primal label.
+function _primal_label(cb, nlp, i::Int)
+    orig = _orig_var_index(cb, i)
+    nm = isempty(nlp.var_names) ? "" : nlp.var_names[orig]
+    return isempty(nm) ? "x[$orig]" : nm
+end
+
+_orig_var_index(cb, i::Int) = _orig_var_index(cb.fixed_handler, i)
+_orig_var_index(::MadNLP.NoFixedVariables, i::Int) = i
+_orig_var_index(::MadNLP.RelaxBound, i::Int) = i
+_orig_var_index(fh::MadNLP.MakeParameter, i::Int) = Int(fh.free[i])
+
+function _constraint_label(nlp, k::Int)
+    nm = isempty(nlp.con_names) ? "" : nlp.con_names[k]
+    return isempty(nm) ? "c[$k]" : nm
+end
+
+function _kkt_row_labels_reduced(cb, nlp)
+    n = cb.nvar
+    n_slack = length(cb.ind_ineq)
+    m = cb.ncon
+    labels = String[]
+    # primal variables
+    for i in 1:n
+        push!(labels, _primal_label(cb, nlp, i))
+    end
+    # slacks (one per inequality constraint)
+    for k in 1:n_slack
+        cidx = Int(cb.ind_ineq[k])
+        push!(labels, "slack[" * _constraint_label(nlp, cidx) * "]")
+    end
+    # constraint multipliers
+    for k in 1:m
+        push!(labels, "λ[" * _constraint_label(nlp, k) * "]")
+    end
+    return labels
+end
+
+"""
+    kkt_row_labels(solver::MadNLP.MadNLPSolver) -> Vector{String}
+
+Return labels for each row of `solver.kkt.aug_com`, mapping back to original
+variable and constraint names where available, with sensible fallbacks
+(`x[i]`, `c[k]`).
+"""
+function kkt_row_labels(solver::MadNLP.MadNLPSolver)
+    return _kkt_row_labels(solver.kkt, solver.cb, _names_of(solver.cb.nlp))
+end
+
+# Reduced KKT systems (SparseKKTSystem, DenseKKTSystem)
+_kkt_row_labels(::MadNLP.AbstractReducedKKTSystem, cb, nlp) =
+    _kkt_row_labels_reduced(cb, nlp)
+
+"""
+    kkt_col_labels(solver::MadNLP.MadNLPSolver) -> Vector{String}
+
+Return labels for each column of `solver.kkt.aug_com`. Same as
+`kkt_row_labels` since the augmented KKT is symmetric.
+"""
+kkt_col_labels(solver::MadNLP.MadNLPSolver) = kkt_row_labels(solver)
