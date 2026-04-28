@@ -1891,3 +1891,25 @@ function MOI.get(model::Optimizer, attr::MOI.NLPBlockDual)
     offset = length(model.qp_data)
     return s .* model.result.multipliers[(offset+1):end]
 end
+
+### Public name-access helpers
+
+_names_of(::Nothing) = (var_names = String[], con_names = String[])
+_names_of(nlp::MOIModel) = nlp
+_names_of(nlp::MadNLP.SparseWrapperModel) = _names_of(nlp.inner)
+
+"""
+    get_variable_names(opt::Optimizer) -> Vector{String}
+
+Return the variable names propagated to the underlying NLP model after
+`optimize!`. Returns an empty vector if no model has been built yet.
+"""
+get_variable_names(opt::Optimizer) = collect(_names_of(opt.nlp).var_names)
+
+"""
+    get_constraint_names(opt::Optimizer) -> Vector{String}
+
+Return the constraint names in evaluator row order. Returns an empty
+vector if no model has been built yet.
+"""
+get_constraint_names(opt::Optimizer) = collect(_names_of(opt.nlp).con_names)

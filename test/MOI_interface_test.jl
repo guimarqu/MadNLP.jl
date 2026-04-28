@@ -381,6 +381,21 @@ function test_moimodel_propagates_con_names()
     return
 end
 
+function test_get_names_helpers()
+    model = MadNLP.Optimizer()
+    MOI.set(model, MOI.Silent(), true)
+    MOI.set(model, MOI.RawOptimizerAttribute("max_iter"), 1)
+    x = MOI.add_variable(model)
+    MOI.set(model, MOI.VariableName(), x, "alpha")
+    MOI.add_constraint(model, x, MOI.GreaterThan(0.0))
+    obj = MOI.ScalarNonlinearFunction(:^, Any[x, 2])
+    MOI.set(model, MOI.ObjectiveFunction{typeof(obj)}(), obj)
+    MOI.optimize!(model)
+    @test MadNLPMOI.get_variable_names(model) == ["alpha"]
+    @test MadNLPMOI.get_constraint_names(model) == String[]
+    return
+end
+
 end
 
 TestMOIWrapper.runtests()
