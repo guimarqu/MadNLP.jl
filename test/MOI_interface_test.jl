@@ -490,6 +490,29 @@ function test_validate_example2_nl_primes()
     return
 end
 
+function test_validate_example3_mixed()
+    model = JuMP.Model(MadNLP.Optimizer)
+    JuMP.set_attribute(model, "max_iter", 1)
+    JuMP.set_attribute(model, "print_level", MadNLP.ERROR)
+    JuMP.@variable(model, x, base_name = "x")
+    JuMP.@variable(model, y, base_name = "y")
+    JuMP.@variable(model, z, base_name = "z")
+    JuMP.@constraint(model, c_sum, x + y + z <= 10)
+    JuMP.@constraint(model, c_bilin, x*y >= 0.5)
+    JuMP.@constraint(model, c_cubic, 42*z^3 - 7 == 0)
+    JuMP.@objective(model, Min, x^2/2 + 100*y^2 + sin(z))
+    JuMP.optimize!(model)
+    opt = JuMP.unsafe_backend(model)
+    solver = opt.solver
+    aug_lbl = MadNLPMOI.kkt_row_labels(solver)
+    @test length(aug_lbl) == 3 + 2 + 3
+    @test "slack[c_sum]"   in aug_lbl
+    @test "slack[c_bilin]" in aug_lbl
+    @test !("slack[c_cubic]" in aug_lbl)
+    @test "λ[c_cubic]"     in aug_lbl
+    return
+end
+
 end
 
 TestMOIWrapper.runtests()
