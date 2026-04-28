@@ -448,6 +448,31 @@ function test_hessian_labels_with_slack()
     return
 end
 
+function test_validate_example1_qp_magnitudes()
+    model = JuMP.Model(MadNLP.Optimizer)
+    JuMP.set_attribute(model, "max_iter", 1)
+    JuMP.set_attribute(model, "print_level", MadNLP.ERROR)
+    JuMP.@variable(model, x, base_name = "x")
+    JuMP.@variable(model, y, base_name = "y")
+    JuMP.@constraint(model, c_lin1, 5*x + 0.1*y >= 1)
+    JuMP.@constraint(model, c_lin2, x - 100*y <= 50)
+    JuMP.@objective(model, Min, 1000*x^2 + 0.01*y^2 + 7*x*y)
+    JuMP.optimize!(model)
+    opt = JuMP.unsafe_backend(model)
+    solver = opt.solver
+    hess = Matrix(solver.kkt.hess_com)
+    hess_lbl = MadNLPMOI.hessian_labels(solver)
+    ix = findfirst(==("x"), hess_lbl)
+    iy = findfirst(==("y"), hess_lbl)
+    @test hess[ix, ix] ≈ 2000  atol=1e-6
+    @test hess[iy, iy] ≈ 0.02   atol=1e-6
+    @test hess[ix, iy] + hess[iy, ix] ≈ 7  atol=1e-6
+    aug_lbl = MadNLPMOI.kkt_row_labels(solver)
+    @test "λ[c_lin1]" in aug_lbl
+    @test "λ[c_lin2]" in aug_lbl
+    return
+end
+
 end
 
 TestMOIWrapper.runtests()
