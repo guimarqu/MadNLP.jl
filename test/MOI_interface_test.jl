@@ -473,6 +473,23 @@ function test_validate_example1_qp_magnitudes()
     return
 end
 
+function test_validate_example2_nl_primes()
+    model = JuMP.Model(MadNLP.Optimizer)
+    JuMP.set_attribute(model, "max_iter", 1)
+    JuMP.set_attribute(model, "print_level", MadNLP.ERROR)
+    JuMP.@variable(model, x, start = 0.0, base_name = "x")
+    JuMP.@variable(model, y, start = 1.0, base_name = "y")
+    JuMP.@constraint(model, c_eq, x*y - 13 == 0)
+    JuMP.@objective(model, Min, exp(3*x) + log(1 + y^2))
+    JuMP.optimize!(model)
+    opt = JuMP.unsafe_backend(model)
+    solver = opt.solver
+    aug_lbl = MadNLPMOI.kkt_row_labels(solver)
+    @test "x" in aug_lbl && "y" in aug_lbl && "λ[c_eq]" in aug_lbl
+    @test !any(startswith.(aug_lbl, "slack["))
+    return
+end
+
 end
 
 TestMOIWrapper.runtests()
