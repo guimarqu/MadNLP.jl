@@ -213,6 +213,16 @@ function test_Parameter_basic()
     return
 end
 
+function test_variable_name_set_get()
+    model = MadNLP.Optimizer()
+    x = MOI.add_variable(model)
+    @test MOI.supports(model, MOI.VariableName(), MOI.VariableIndex)
+    @test MOI.get(model, MOI.VariableName(), x) == ""
+    MOI.set(model, MOI.VariableName(), x, "x_one")
+    @test MOI.get(model, MOI.VariableName(), x) == "x_one"
+    return
+end
+
 end
 
 TestMOIWrapper.runtests()

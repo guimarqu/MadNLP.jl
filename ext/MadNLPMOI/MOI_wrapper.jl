@@ -60,6 +60,7 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
     islp::Bool
     jprod_available::Bool
     hprod_available::Bool
+    var_names::Dict{MOI.VariableIndex, String}
     hess_available::Bool
 end
 
@@ -99,6 +100,7 @@ function Optimizer(; kwargs...)
         false,
         false,
         false,
+        Dict{MOI.VariableIndex, String}(),
         false,
     )
 end
@@ -157,6 +159,7 @@ function MOI.empty!(model::Optimizer)
     empty!(model.hrows)
     empty!(model.hcols)
     model.needs_new_nlp = true
+    empty!(model.var_names)
     model.has_only_linear_constraints = false
     model.islp = false
     model.jprod_available = false
@@ -324,6 +327,28 @@ function MOI.set(model::Optimizer, ::MOI.Name, value::String)
 end
 
 MOI.get(model::Optimizer, ::MOI.Name) = model.name
+
+### MOI.VariableName
+
+MOI.supports(::Optimizer, ::MOI.VariableName, ::Type{MOI.VariableIndex}) = true
+
+function MOI.get(model::Optimizer, ::MOI.VariableName, vi::MOI.VariableIndex)
+    return get(model.var_names, vi, "")
+end
+
+function MOI.set(
+    model::Optimizer,
+    ::MOI.VariableName,
+    vi::MOI.VariableIndex,
+    name::String,
+)
+    if isempty(name)
+        delete!(model.var_names, vi)
+    else
+        model.var_names[vi] = name
+    end
+    return
+end
 
 ### MOI.Silent
 
