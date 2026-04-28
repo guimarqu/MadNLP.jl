@@ -574,6 +574,37 @@ function test_validate_example6_prime_jacobian()
     return
 end
 
+function test_kkt_diagnostic_smoke()
+    model = JuMP.Model(MadNLP.Optimizer)
+    JuMP.set_attribute(model, "max_iter", 1)
+    JuMP.set_attribute(model, "print_level", MadNLP.ERROR)
+    JuMP.set_attribute(model, "kkt_system", MadNLP.SparseUnreducedKKTSystem)
+    JuMP.@variable(model, 0 <= x <= 10, base_name = "x")
+    JuMP.@variable(model, y, base_name = "y")
+    JuMP.@constraint(model, c_eq, x + y == 1)
+    JuMP.@constraint(model, c_ineq, x * y >= 0.1)
+    JuMP.@objective(model, Min, x^2 + 100*y^2)
+    JuMP.optimize!(model)
+    solver = JuMP.unsafe_backend(model).solver
+    diag = MadNLPMOI.kkt_diagnostic(solver)
+    @test diag isa MadNLPMOI.KKTDiagnostic
+    @test diag.iter == 1
+    @test diag.aug_size[1] == diag.aug_size[2]
+    @test diag.cond_aug > 0
+    @test length(diag.hess_diag) == 3              # 2 vars + 1 slack
+    @test length(diag.jac_row_spread) == 2         # 2 contraintes
+    @test length(diag.primal) == 3                 # 2 vars + 1 slack
+    @test length(diag.dual_con) == 2
+    @test length(diag.dual_lb) >= 1                # x has a lower bound
+    @test length(diag.dual_ub) >= 1                # x has an upper bound
+    @test !isempty(diag.soft_mode)
+    # show should not throw
+    io = IOBuffer()
+    show(io, MIME"text/plain"(), diag)
+    @test !isempty(String(take!(io)))
+    return
+end
+
 end
 
 TestMOIWrapper.runtests()
