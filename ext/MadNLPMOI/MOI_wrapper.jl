@@ -197,6 +197,42 @@ function _init_nlp_model(model)
     return
 end
 
+function _qp_constraint_index(qp::QPBlockData{T}, row::Int) where {T}
+    F = _function_type_to_set(T, qp.function_type[row])
+    S = _bound_type_to_set(T, qp.bound_type[row])
+    return MOI.ConstraintIndex{F, S}(row)
+end
+
+function _build_con_names(model::Optimizer)
+    names = String[]
+    # 1) QP rows
+    for row in 1:length(model.qp_data.constraints)
+        ci = _qp_constraint_index(model.qp_data, row)
+        push!(names, get(model.con_names, ci, ""))
+    end
+    # 2) Vector nonlinear oracle blocks
+    for (i, (_, cache)) in enumerate(model.vector_nonlinear_oracle_constraints)
+        ci = MOI.ConstraintIndex{
+            MOI.VectorOfVariables,
+            MOI.VectorNonlinearOracle{Float64},
+        }(i)
+        nm = get(model.con_names, ci, "")
+        for _ in 1:cache.set.output_dimension
+            push!(names, nm)
+        end
+    end
+    # 3) NL block (ScalarNonlinearFunction)
+    if model.nlp_model !== nothing
+        nl_keys = sort!(collect(keys(model.nlp_model.constraints)); by = k -> k.value)
+        for k in nl_keys
+            S = typeof(model.nlp_model.constraints[k].set)
+            ci = MOI.ConstraintIndex{MOI.ScalarNonlinearFunction, S}(k.value)
+            push!(names, get(model.con_names, ci, ""))
+        end
+    end
+    return names
+end
+
 function MOI.supports_add_constrained_variable(
     ::Optimizer,
     ::Type{MOI.Parameter{Float64}},
@@ -1494,6 +1530,9 @@ function _setup_nlp(model::Optimizer; array_type = nothing)
     end
     ncon = length(g_L)
 
+    con_names_vec = _build_con_names(model)
+    @assert length(con_names_vec) == ncon
+
     # Dual multipliers
     y0 = zeros(Float64, ncon)
     for (i, start) in enumerate(model.qp_data.mult_g)
@@ -1544,7 +1583,7 @@ function _setup_nlp(model::Optimizer; array_type = nothing)
         model,
         NLPModels.Counters(),
         var_names_vec,
-        fill("", ncon),   # con_names — populated in Task 8
+        con_names_vec,
     )
 
     model.nlp = if isnothing(array_type)

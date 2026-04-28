@@ -354,6 +354,33 @@ function test_moimodel_propagates_var_names()
     return
 end
 
+function test_moimodel_propagates_con_names()
+    model = MadNLP.Optimizer()
+    MOI.set(model, MOI.Silent(), true)
+    MOI.set(model, MOI.RawOptimizerAttribute("max_iter"), 1)
+    x = MOI.add_variable(model)
+    y = MOI.add_variable(model)
+    MOI.add_constraint(model, x, MOI.GreaterThan(0.0))
+    MOI.add_constraint(model, y, MOI.GreaterThan(0.0))
+    f_lin = MOI.ScalarAffineFunction(
+        [MOI.ScalarAffineTerm(1.0, x), MOI.ScalarAffineTerm(1.0, y)],
+        0.0,
+    )
+    c_lin = MOI.add_constraint(model, f_lin, MOI.LessThan(10.0))
+    MOI.set(model, MOI.ConstraintName(), c_lin, "lin")
+    f_nl = MOI.ScalarNonlinearFunction(:*, Any[x, y])
+    c_nl = MOI.add_constraint(model, f_nl, MOI.GreaterThan(1.0))
+    MOI.set(model, MOI.ConstraintName(), c_nl, "nl")
+    obj = MOI.ScalarNonlinearFunction(:+, Any[
+        MOI.ScalarNonlinearFunction(:^, Any[x, 2]),
+        MOI.ScalarNonlinearFunction(:^, Any[y, 2]),
+    ])
+    MOI.set(model, MOI.ObjectiveFunction{typeof(obj)}(), obj)
+    MOI.optimize!(model)
+    @test model.nlp.con_names == ["lin", "nl"]
+    return
+end
+
 end
 
 TestMOIWrapper.runtests()
