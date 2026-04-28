@@ -530,6 +530,26 @@ function test_validate_example4_bound_multipliers()
     return
 end
 
+function test_validate_example5_fixed_variable()
+    model = JuMP.Model(MadNLP.Optimizer)
+    JuMP.set_attribute(model, "max_iter", 1)
+    JuMP.set_attribute(model, "print_level", MadNLP.ERROR)
+    JuMP.set_attribute(model, "fixed_variable_treatment", MadNLP.MakeParameter)
+    JuMP.@variable(model, x == 5, base_name = "x")
+    JuMP.@variable(model, y, base_name = "y")
+    JuMP.@variable(model, z, base_name = "z")
+    JuMP.@constraint(model, c_sum, x + 2*y + 3*z >= 6)
+    JuMP.@objective(model, Min, (x - 1)^2 + (y - 2)^2 + (z - 3)^2)
+    JuMP.optimize!(model)
+    opt = JuMP.unsafe_backend(model)
+    solver = opt.solver
+    aug_lbl = MadNLPMOI.kkt_row_labels(solver)
+    @test aug_lbl[1] == "y"
+    @test aug_lbl[2] == "z"
+    @test !("x" in aug_lbl)
+    return
+end
+
 end
 
 TestMOIWrapper.runtests()
