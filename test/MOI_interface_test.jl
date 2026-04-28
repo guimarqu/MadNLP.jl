@@ -550,6 +550,30 @@ function test_validate_example5_fixed_variable()
     return
 end
 
+function test_validate_example6_prime_jacobian()
+    model = JuMP.Model(MadNLP.Optimizer)
+    JuMP.set_attribute(model, "max_iter", 1)
+    JuMP.set_attribute(model, "print_level", MadNLP.ERROR)
+    JuMP.@variable(model, w, base_name = "w")
+    JuMP.@variable(model, x, base_name = "x")
+    JuMP.@variable(model, y, base_name = "y")
+    JuMP.@variable(model, z, base_name = "z")
+    JuMP.@constraint(model, c_primes, 13*w + 17*x + 19*y + 23*z == 100)
+    JuMP.@objective(model, Min, w^2 + x^2 + y^2 + z^2)
+    JuMP.optimize!(model)
+    opt = JuMP.unsafe_backend(model)
+    solver = opt.solver
+    aug_lbl = MadNLPMOI.kkt_row_labels(solver)
+    @test aug_lbl[1:4] == ["w", "x", "y", "z"]
+    @test aug_lbl[end] == "λ[c_primes]"
+    jac = Matrix(solver.kkt.jac_com)
+    @test jac[1, 1] ≈ 13
+    @test jac[1, 2] ≈ 17
+    @test jac[1, 3] ≈ 19
+    @test jac[1, 4] ≈ 23
+    return
+end
+
 end
 
 TestMOIWrapper.runtests()
