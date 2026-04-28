@@ -334,6 +334,26 @@ function test_moimodel_has_name_vectors()
     return
 end
 
+function test_moimodel_propagates_var_names()
+    model = MadNLP.Optimizer()
+    MOI.set(model, MOI.Silent(), true)
+    MOI.set(model, MOI.RawOptimizerAttribute("max_iter"), 1)
+    x = MOI.add_variable(model)
+    y = MOI.add_variable(model)
+    MOI.add_constraint(model, x, MOI.GreaterThan(0.0))
+    MOI.add_constraint(model, y, MOI.GreaterThan(0.0))
+    MOI.set(model, MOI.VariableName(), x, "alpha")
+    MOI.set(model, MOI.VariableName(), y, "beta")
+    obj = MOI.ScalarNonlinearFunction(:+, Any[
+        MOI.ScalarNonlinearFunction(:^, Any[x, 2]),
+        MOI.ScalarNonlinearFunction(:^, Any[y, 2]),
+    ])
+    MOI.set(model, MOI.ObjectiveFunction{typeof(obj)}(), obj)
+    MOI.optimize!(model)
+    @test model.nlp.var_names == ["alpha", "beta"]
+    return
+end
+
 end
 
 TestMOIWrapper.runtests()

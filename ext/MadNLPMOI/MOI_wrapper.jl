@@ -1468,6 +1468,11 @@ function _setup_nlp(model::Optimizer; array_type = nothing)
 
     # Initial variable
     nvar = length(model.variables.lower)
+    var_names_vec = String[
+        get(model.var_names, vi, "")
+        for vi in model.list_of_variable_indices
+        if !_is_parameter(vi)
+    ]
     x0 = zeros(Float64, nvar)
     for i in 1:length(model.variable_primal_start)
         x0[i] = if model.variable_primal_start[i] !== nothing
@@ -1538,7 +1543,7 @@ function _setup_nlp(model::Optimizer; array_type = nothing)
         ),
         model,
         NLPModels.Counters(),
-        fill("", nvar),   # var_names — populated in Task 7
+        var_names_vec,
         fill("", ncon),   # con_names — populated in Task 8
     )
 
