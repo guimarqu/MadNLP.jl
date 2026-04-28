@@ -2003,3 +2003,22 @@ Return labels for each column of `solver.kkt.aug_com`. Same as
 `kkt_row_labels` since the augmented KKT is symmetric.
 """
 kkt_col_labels(solver::MadNLP.MadNLPSolver) = kkt_row_labels(solver)
+
+"""
+    hessian_labels(solver::MadNLP.MadNLPSolver) -> Vector{String}
+
+Return labels for each row/col of the Lagrangian Hessian
+`solver.kkt.hess_com` — `cb.nvar` primal entries followed by
+`length(cb.ind_ineq)` slack entries.
+"""
+function hessian_labels(solver::MadNLP.MadNLPSolver)
+    cb = solver.cb
+    nlp = _names_of(cb.nlp)
+    n = cb.nvar
+    labels = String[_primal_label(cb, nlp, i) for i in 1:n]
+    for k in 1:length(cb.ind_ineq)
+        cidx = Int(cb.ind_ineq[k])
+        push!(labels, "slack[" * _constraint_label(nlp, cidx) * "]")
+    end
+    return labels
+end

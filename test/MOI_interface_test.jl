@@ -434,6 +434,20 @@ function test_kkt_row_labels_unreduced_bounds()
     return
 end
 
+function test_hessian_labels_with_slack()
+    model = JuMP.Model(MadNLP.Optimizer)
+    JuMP.set_attribute(model, "max_iter", 1)
+    JuMP.set_attribute(model, "print_level", MadNLP.ERROR)
+    JuMP.@variable(model, x, base_name = "x")
+    JuMP.@constraint(model, c, x^2 <= 1)
+    JuMP.@objective(model, Min, x^2)
+    JuMP.optimize!(model)
+    opt = JuMP.unsafe_backend(model)
+    labels = MadNLPMOI.hessian_labels(opt.solver)
+    @test labels == ["x", "slack[c]"]
+    return
+end
+
 end
 
 TestMOIWrapper.runtests()
