@@ -229,6 +229,12 @@ function _build_con_names(model::Optimizer)
             ci = MOI.ConstraintIndex{MOI.ScalarNonlinearFunction, S}(k.value)
             push!(names, get(model.con_names, ci, ""))
         end
+    else
+        # Legacy NL API: constraints come from nlp_data.constraint_bounds and
+        # do not have associated MOI.ConstraintIndex names. Pad with empty strings.
+        for _ in 1:length(model.nlp_data.constraint_bounds)
+            push!(names, "")
+        end
     end
     return names
 end
