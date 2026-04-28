@@ -297,6 +297,19 @@ function test_constraint_name_inverse_lookup_type_filter()
     return
 end
 
+function test_names_cleared_on_empty()
+    model = MadNLP.Optimizer()
+    x = MOI.add_variable(model)
+    MOI.set(model, MOI.VariableName(), x, "x")
+    f = MOI.ScalarAffineFunction([MOI.ScalarAffineTerm(1.0, x)], 0.0)
+    ci = MOI.add_constraint(model, f, MOI.LessThan(1.0))
+    MOI.set(model, MOI.ConstraintName(), ci, "c1")
+    MOI.empty!(model)
+    @test isempty(model.var_names)
+    @test isempty(model.con_names)
+    return
+end
+
 end
 
 TestMOIWrapper.runtests()
