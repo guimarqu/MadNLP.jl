@@ -246,6 +246,23 @@ function test_variable_name_clear_on_empty_string()
     return
 end
 
+function test_constraint_name_affine()
+    model = MadNLP.Optimizer()
+    x = MOI.add_variable(model)
+    y = MOI.add_variable(model)
+    f = MOI.ScalarAffineFunction(
+        [MOI.ScalarAffineTerm(1.0, x), MOI.ScalarAffineTerm(2.0, y)],
+        0.0,
+    )
+    ci = MOI.add_constraint(model, f, MOI.LessThan(10.0))
+    @test MOI.supports(model, MOI.ConstraintName(), typeof(ci))
+    @test MOI.get(model, MOI.ConstraintName(), ci) == ""
+    MOI.set(model, MOI.ConstraintName(), ci, "lin1")
+    @test MOI.get(model, MOI.ConstraintName(), ci) == "lin1"
+    @test MOI.get(model, typeof(ci), "lin1") == ci
+    return
+end
+
 end
 
 TestMOIWrapper.runtests()

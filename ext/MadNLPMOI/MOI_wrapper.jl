@@ -61,6 +61,7 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
     jprod_available::Bool
     hprod_available::Bool
     var_names::Dict{MOI.VariableIndex, String}
+    con_names::Dict{MOI.ConstraintIndex, String}
     hess_available::Bool
 end
 
@@ -101,6 +102,7 @@ function Optimizer(; kwargs...)
         false,
         false,
         Dict{MOI.VariableIndex, String}(),
+        Dict{MOI.ConstraintIndex, String}(),
         false,
     )
 end
@@ -160,6 +162,7 @@ function MOI.empty!(model::Optimizer)
     empty!(model.hcols)
     model.needs_new_nlp = true
     empty!(model.var_names)
+    empty!(model.con_names)
     model.has_only_linear_constraints = false
     model.islp = false
     model.jprod_available = false
@@ -354,6 +357,48 @@ function MOI.get(model::Optimizer, ::Type{MOI.VariableIndex}, name::String)
     for (vi, n) in model.var_names
         if n == name
             return vi
+        end
+    end
+    return nothing
+end
+
+### MOI.ConstraintName
+
+# Variable-bound constraints (CI{VariableIndex, S}) cannot be named per MOI.
+MOI.supports(
+    ::Optimizer,
+    ::MOI.ConstraintName,
+    ::Type{<:MOI.ConstraintIndex{MOI.VariableIndex, <:Any}},
+) = false
+
+MOI.supports(
+    ::Optimizer,
+    ::MOI.ConstraintName,
+    ::Type{<:MOI.ConstraintIndex},
+) = true
+
+function MOI.get(model::Optimizer, ::MOI.ConstraintName, ci::MOI.ConstraintIndex)
+    return get(model.con_names, ci, "")
+end
+
+function MOI.set(
+    model::Optimizer,
+    ::MOI.ConstraintName,
+    ci::MOI.ConstraintIndex,
+    name::String,
+)
+    if isempty(name)
+        delete!(model.con_names, ci)
+    else
+        model.con_names[ci] = name
+    end
+    return
+end
+
+function MOI.get(model::Optimizer, ::Type{C}, name::String) where {C<:MOI.ConstraintIndex}
+    for (ci, n) in model.con_names
+        if n == name && ci isa C
+            return ci::C
         end
     end
     return nothing
