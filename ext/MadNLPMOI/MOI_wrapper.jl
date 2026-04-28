@@ -1333,6 +1333,8 @@ struct MOIModel{T} <: NLPModels.AbstractNLPModel{T,Vector{T}}
     meta::NLPModels.NLPModelMeta{T, Vector{T}}
     model::Optimizer
     counters::NLPModels.Counters
+    var_names::Vector{String}
+    con_names::Vector{String}
 end
 
 NLPModels.obj(nlp::MOIModel, x::AbstractVector{Float64}) = MOI.eval_objective(nlp.model,x)
@@ -1536,6 +1538,8 @@ function _setup_nlp(model::Optimizer; array_type = nothing)
         ),
         model,
         NLPModels.Counters(),
+        fill("", nvar),   # var_names — populated in Task 7
+        fill("", ncon),   # con_names — populated in Task 8
     )
 
     model.nlp = if isnothing(array_type)

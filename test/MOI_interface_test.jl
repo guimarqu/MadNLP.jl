@@ -5,6 +5,7 @@ using Test
 
 using MathOptInterface
 const MOI = MathOptInterface
+const MadNLPMOI = Base.get_extension(MadNLP, :MadNLPMOI)
 
 function runtests()
     for name in names(@__MODULE__; all=true)
@@ -307,6 +308,29 @@ function test_names_cleared_on_empty()
     MOI.empty!(model)
     @test isempty(model.var_names)
     @test isempty(model.con_names)
+    return
+end
+
+function test_moimodel_has_name_vectors()
+    model = MadNLP.Optimizer()
+    MOI.set(model, MOI.Silent(), true)
+    MOI.set(model, MOI.RawOptimizerAttribute("max_iter"), 1)
+    x = MOI.add_variable(model)
+    y = MOI.add_variable(model)
+    MOI.add_constraint(model, x, MOI.GreaterThan(0.0))
+    MOI.add_constraint(model, y, MOI.GreaterThan(0.0))
+    f = MOI.ScalarNonlinearFunction(:+, Any[
+        MOI.ScalarNonlinearFunction(:^, Any[x, 2]),
+        MOI.ScalarNonlinearFunction(:^, Any[y, 2]),
+    ])
+    MOI.set(model, MOI.ObjectiveFunction{typeof(f)}(), f)
+    MOI.optimize!(model)
+    nlp = model.nlp
+    @test nlp isa MadNLPMOI.MOIModel
+    @test nlp.var_names isa Vector{String}
+    @test nlp.con_names isa Vector{String}
+    @test length(nlp.var_names) == 2
+    @test length(nlp.con_names) == 0
     return
 end
 
