@@ -223,6 +223,29 @@ function test_variable_name_set_get()
     return
 end
 
+function test_variable_name_inverse_lookup()
+    model = MadNLP.Optimizer()
+    x = MOI.add_variable(model)
+    y = MOI.add_variable(model)
+    MOI.set(model, MOI.VariableName(), x, "alpha")
+    MOI.set(model, MOI.VariableName(), y, "beta")
+    @test MOI.get(model, MOI.VariableIndex, "alpha") == x
+    @test MOI.get(model, MOI.VariableIndex, "beta") == y
+    @test MOI.get(model, MOI.VariableIndex, "missing") === nothing
+    return
+end
+
+function test_variable_name_clear_on_empty_string()
+    model = MadNLP.Optimizer()
+    x = MOI.add_variable(model)
+    MOI.set(model, MOI.VariableName(), x, "x")
+    @test MOI.get(model, MOI.VariableName(), x) == "x"
+    MOI.set(model, MOI.VariableName(), x, "")
+    @test MOI.get(model, MOI.VariableName(), x) == ""
+    @test isempty(model.var_names)
+    return
+end
+
 end
 
 TestMOIWrapper.runtests()

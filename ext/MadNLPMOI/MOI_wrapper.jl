@@ -350,6 +350,15 @@ function MOI.set(
     return
 end
 
+function MOI.get(model::Optimizer, ::Type{MOI.VariableIndex}, name::String)
+    for (vi, n) in model.var_names
+        if n == name
+            return vi
+        end
+    end
+    return nothing
+end
+
 ### MOI.Silent
 
 MOI.supports(::Optimizer, ::MOI.Silent) = true
