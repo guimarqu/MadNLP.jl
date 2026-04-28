@@ -1897,6 +1897,7 @@ end
 _names_of(::Nothing) = (var_names = String[], con_names = String[])
 _names_of(nlp::MOIModel) = nlp
 _names_of(nlp::MadNLP.SparseWrapperModel) = _names_of(nlp.inner)
+_names_of(nlp::MadNLP.DenseWrapperModel) = _names_of(nlp.inner)
 
 """
     get_variable_names(opt::Optimizer) -> Vector{String}
