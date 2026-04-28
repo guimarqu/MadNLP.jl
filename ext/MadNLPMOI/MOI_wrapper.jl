@@ -1970,6 +1970,32 @@ end
 _kkt_row_labels(::MadNLP.AbstractReducedKKTSystem, cb, nlp) =
     _kkt_row_labels_reduced(cb, nlp)
 
+function _label_in_n_tot(cb, nlp, i::Int)
+    if i <= cb.nvar
+        return _primal_label(cb, nlp, i)
+    else
+        slack_k = i - cb.nvar
+        cidx = Int(cb.ind_ineq[slack_k])
+        return "slack[" * _constraint_label(nlp, cidx) * "]"
+    end
+end
+
+function _kkt_row_labels_unreduced(cb, nlp)
+    labels = _kkt_row_labels_reduced(cb, nlp)
+    for k in 1:length(cb.ind_lb)
+        i = Int(cb.ind_lb[k])
+        push!(labels, "zL[" * _label_in_n_tot(cb, nlp, i) * "]")
+    end
+    for k in 1:length(cb.ind_ub)
+        i = Int(cb.ind_ub[k])
+        push!(labels, "zU[" * _label_in_n_tot(cb, nlp, i) * "]")
+    end
+    return labels
+end
+
+_kkt_row_labels(::MadNLP.AbstractUnreducedKKTSystem, cb, nlp) =
+    _kkt_row_labels_unreduced(cb, nlp)
+
 """
     kkt_col_labels(solver::MadNLP.MadNLPSolver) -> Vector{String}
 

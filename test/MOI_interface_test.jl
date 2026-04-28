@@ -419,6 +419,21 @@ function test_kkt_row_labels_sparse_qp()
     return
 end
 
+function test_kkt_row_labels_unreduced_bounds()
+    model = JuMP.Model(() ->
+        MadNLP.Optimizer(kkt_system = MadNLP.SparseUnreducedKKTSystem))
+    JuMP.set_attribute(model, "max_iter", 1)
+    JuMP.set_attribute(model, "print_level", MadNLP.ERROR)
+    JuMP.@variable(model, 0 <= x <= 100, base_name = "x")
+    JuMP.@variable(model, -50 <= y <= 50, base_name = "y")
+    JuMP.@objective(model, Min, (x - 3)^2 + (y + 2)^2)
+    JuMP.optimize!(model)
+    opt = JuMP.unsafe_backend(model)
+    labels = MadNLPMOI.kkt_row_labels(opt.solver)
+    @test labels == ["x", "y", "zL[x]", "zL[y]", "zU[x]", "zU[y]"]
+    return
+end
+
 end
 
 TestMOIWrapper.runtests()
