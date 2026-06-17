@@ -60,6 +60,8 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
     islp::Bool
     jprod_available::Bool
     hprod_available::Bool
+    var_names::Dict{MOI.VariableIndex, String}
+    con_names::Dict{MOI.ConstraintIndex, String}
     hess_available::Bool
 end
 
@@ -99,6 +101,8 @@ function Optimizer(; kwargs...)
         false,
         false,
         false,
+        Dict{MOI.VariableIndex, String}(),
+        Dict{MOI.ConstraintIndex, String}(),
         false,
     )
 end
@@ -157,6 +161,8 @@ function MOI.empty!(model::Optimizer)
     empty!(model.hrows)
     empty!(model.hcols)
     model.needs_new_nlp = true
+    empty!(model.var_names)
+    empty!(model.con_names)
     model.has_only_linear_constraints = false
     model.islp = false
     model.jprod_available = false
@@ -189,6 +195,48 @@ function _init_nlp_model(model)
         model.nlp_model = MOI.Nonlinear.Model()
     end
     return
+end
+
+function _qp_constraint_index(qp::QPBlockData{T}, row::Int) where {T}
+    F = _function_type_to_set(T, qp.function_type[row])
+    S = _bound_type_to_set(T, qp.bound_type[row])
+    return MOI.ConstraintIndex{F, S}(row)
+end
+
+function _build_con_names(model::Optimizer)
+    names = String[]
+    # 1) QP rows
+    for row in 1:length(model.qp_data.constraints)
+        ci = _qp_constraint_index(model.qp_data, row)
+        push!(names, get(model.con_names, ci, ""))
+    end
+    # 2) Vector nonlinear oracle blocks
+    for (i, (_, cache)) in enumerate(model.vector_nonlinear_oracle_constraints)
+        ci = MOI.ConstraintIndex{
+            MOI.VectorOfVariables,
+            MOI.VectorNonlinearOracle{Float64},
+        }(i)
+        nm = get(model.con_names, ci, "")
+        for _ in 1:cache.set.output_dimension
+            push!(names, nm)
+        end
+    end
+    # 3) NL block (ScalarNonlinearFunction)
+    if model.nlp_model !== nothing
+        nl_keys = sort!(collect(keys(model.nlp_model.constraints)); by = k -> k.value)
+        for k in nl_keys
+            S = typeof(model.nlp_model.constraints[k].set)
+            ci = MOI.ConstraintIndex{MOI.ScalarNonlinearFunction, S}(k.value)
+            push!(names, get(model.con_names, ci, ""))
+        end
+    else
+        # Legacy NL API: constraints come from nlp_data.constraint_bounds and
+        # do not have associated MOI.ConstraintIndex names. Pad with empty strings.
+        for _ in 1:length(model.nlp_data.constraint_bounds)
+            push!(names, "")
+        end
+    end
+    return names
 end
 
 function MOI.supports_add_constrained_variable(
@@ -324,6 +372,79 @@ function MOI.set(model::Optimizer, ::MOI.Name, value::String)
 end
 
 MOI.get(model::Optimizer, ::MOI.Name) = model.name
+
+### MOI.VariableName
+
+MOI.supports(::Optimizer, ::MOI.VariableName, ::Type{MOI.VariableIndex}) = true
+
+function MOI.get(model::Optimizer, ::MOI.VariableName, vi::MOI.VariableIndex)
+    return get(model.var_names, vi, "")
+end
+
+function MOI.set(
+    model::Optimizer,
+    ::MOI.VariableName,
+    vi::MOI.VariableIndex,
+    name::String,
+)
+    if isempty(name)
+        delete!(model.var_names, vi)
+    else
+        model.var_names[vi] = name
+    end
+    return
+end
+
+function MOI.get(model::Optimizer, ::Type{MOI.VariableIndex}, name::String)
+    for (vi, n) in model.var_names
+        if n == name
+            return vi
+        end
+    end
+    return nothing
+end
+
+### MOI.ConstraintName
+
+# Variable-bound constraints (CI{VariableIndex, S}) cannot be named per MOI.
+MOI.supports(
+    ::Optimizer,
+    ::MOI.ConstraintName,
+    ::Type{<:MOI.ConstraintIndex{MOI.VariableIndex, <:Any}},
+) = false
+
+MOI.supports(
+    ::Optimizer,
+    ::MOI.ConstraintName,
+    ::Type{<:MOI.ConstraintIndex},
+) = true
+
+function MOI.get(model::Optimizer, ::MOI.ConstraintName, ci::MOI.ConstraintIndex)
+    return get(model.con_names, ci, "")
+end
+
+function MOI.set(
+    model::Optimizer,
+    ::MOI.ConstraintName,
+    ci::MOI.ConstraintIndex,
+    name::String,
+)
+    if isempty(name)
+        delete!(model.con_names, ci)
+    else
+        model.con_names[ci] = name
+    end
+    return
+end
+
+function MOI.get(model::Optimizer, ::Type{C}, name::String) where {C<:MOI.ConstraintIndex}
+    for (ci, n) in model.con_names
+        if n == name && ci isa C
+            return ci::C
+        end
+    end
+    return nothing
+end
 
 ### MOI.Silent
 
@@ -1254,6 +1375,8 @@ struct MOIModel{T} <: NLPModels.AbstractNLPModel{T,Vector{T}}
     meta::NLPModels.NLPModelMeta{T, Vector{T}}
     model::Optimizer
     counters::NLPModels.Counters
+    var_names::Vector{String}
+    con_names::Vector{String}
 end
 
 NLPModels.obj(nlp::MOIModel, x::AbstractVector{Float64}) = MOI.eval_objective(nlp.model,x)
@@ -1387,6 +1510,11 @@ function _setup_nlp(model::Optimizer; array_type = nothing)
 
     # Initial variable
     nvar = length(model.variables.lower)
+    var_names_vec = String[
+        get(model.var_names, vi, "")
+        for vi in model.list_of_variable_indices
+        if !_is_parameter(vi)
+    ]
     x0 = zeros(Float64, nvar)
     for i in 1:length(model.variable_primal_start)
         x0[i] = if model.variable_primal_start[i] !== nothing
@@ -1407,6 +1535,9 @@ function _setup_nlp(model::Optimizer; array_type = nothing)
         push!(g_U, bound.upper)
     end
     ncon = length(g_L)
+
+    con_names_vec = _build_con_names(model)
+    @assert length(con_names_vec) == ncon
 
     # Dual multipliers
     y0 = zeros(Float64, ncon)
@@ -1457,6 +1588,8 @@ function _setup_nlp(model::Optimizer; array_type = nothing)
         ),
         model,
         NLPModels.Counters(),
+        var_names_vec,
+        con_names_vec,
     )
 
     model.nlp = if isnothing(array_type)
@@ -1763,4 +1896,135 @@ function MOI.get(model::Optimizer, attr::MOI.NLPBlockDual)
     s = -_dual_multiplier(model)
     offset = length(model.qp_data)
     return s .* model.result.multipliers[(offset+1):end]
+end
+
+### Public name-access helpers
+
+_names_of(::Nothing) = (var_names = String[], con_names = String[])
+_names_of(nlp::MOIModel) = nlp
+_names_of(nlp::MadNLP.SparseWrapperModel) = _names_of(nlp.inner)
+_names_of(nlp::MadNLP.DenseWrapperModel) = _names_of(nlp.inner)
+
+"""
+    get_variable_names(opt::Optimizer) -> Vector{String}
+
+Return the variable names propagated to the underlying NLP model after
+`optimize!`. Returns an empty vector if no model has been built yet.
+"""
+get_variable_names(opt::Optimizer) = collect(_names_of(opt.nlp).var_names)
+
+"""
+    get_constraint_names(opt::Optimizer) -> Vector{String}
+
+Return the constraint names in evaluator row order. Returns an empty
+vector if no model has been built yet.
+"""
+get_constraint_names(opt::Optimizer) = collect(_names_of(opt.nlp).con_names)
+
+### KKT row/column labels
+
+# Map an index in the cb's free-variable space (1..cb.nvar) to a primal label.
+function _primal_label(cb, nlp, i::Int)
+    orig = _orig_var_index(cb, i)
+    nm = isempty(nlp.var_names) ? "" : nlp.var_names[orig]
+    return isempty(nm) ? "x[$orig]" : nm
+end
+
+_orig_var_index(cb, i::Int) = _orig_var_index(cb.fixed_handler, i)
+_orig_var_index(::MadNLP.NoFixedVariables, i::Int) = i
+_orig_var_index(::MadNLP.RelaxBound, i::Int) = i
+_orig_var_index(fh::MadNLP.MakeParameter, i::Int) = Int(fh.free[i])
+
+function _constraint_label(nlp, k::Int)
+    nm = isempty(nlp.con_names) ? "" : nlp.con_names[k]
+    return isempty(nm) ? "c[$k]" : nm
+end
+
+function _kkt_row_labels_reduced(cb, nlp)
+    n = cb.nvar
+    n_slack = length(cb.ind_ineq)
+    m = cb.ncon
+    labels = String[]
+    # primal variables
+    for i in 1:n
+        push!(labels, _primal_label(cb, nlp, i))
+    end
+    # slacks (one per inequality constraint)
+    for k in 1:n_slack
+        cidx = Int(cb.ind_ineq[k])
+        push!(labels, "slack[" * _constraint_label(nlp, cidx) * "]")
+    end
+    # constraint multipliers
+    for k in 1:m
+        push!(labels, "λ[" * _constraint_label(nlp, k) * "]")
+    end
+    return labels
+end
+
+"""
+    kkt_row_labels(solver::MadNLP.MadNLPSolver) -> Vector{String}
+
+Return labels for each row of `solver.kkt.aug_com`, mapping back to original
+variable and constraint names where available, with sensible fallbacks
+(`x[i]`, `c[k]`).
+"""
+function kkt_row_labels(solver::MadNLP.MadNLPSolver)
+    return _kkt_row_labels(solver.kkt, solver.cb, _names_of(solver.cb.nlp))
+end
+
+# Reduced KKT systems (SparseKKTSystem, DenseKKTSystem)
+_kkt_row_labels(::MadNLP.AbstractReducedKKTSystem, cb, nlp) =
+    _kkt_row_labels_reduced(cb, nlp)
+
+function _label_in_n_tot(cb, nlp, i::Int)
+    if i <= cb.nvar
+        return _primal_label(cb, nlp, i)
+    else
+        slack_k = i - cb.nvar
+        cidx = Int(cb.ind_ineq[slack_k])
+        return "slack[" * _constraint_label(nlp, cidx) * "]"
+    end
+end
+
+function _kkt_row_labels_unreduced(cb, nlp)
+    labels = _kkt_row_labels_reduced(cb, nlp)
+    for k in 1:length(cb.ind_lb)
+        i = Int(cb.ind_lb[k])
+        push!(labels, "zL[" * _label_in_n_tot(cb, nlp, i) * "]")
+    end
+    for k in 1:length(cb.ind_ub)
+        i = Int(cb.ind_ub[k])
+        push!(labels, "zU[" * _label_in_n_tot(cb, nlp, i) * "]")
+    end
+    return labels
+end
+
+_kkt_row_labels(::MadNLP.AbstractUnreducedKKTSystem, cb, nlp) =
+    _kkt_row_labels_unreduced(cb, nlp)
+
+"""
+    kkt_col_labels(solver::MadNLP.MadNLPSolver) -> Vector{String}
+
+Return labels for each column of `solver.kkt.aug_com`. Same as
+`kkt_row_labels` since the augmented KKT is symmetric.
+"""
+kkt_col_labels(solver::MadNLP.MadNLPSolver) = kkt_row_labels(solver)
+
+"""
+    hessian_labels(solver::MadNLP.MadNLPSolver) -> Vector{String}
+
+Return labels for each row/col of the Lagrangian Hessian
+`solver.kkt.hess_com` — `cb.nvar` primal entries followed by
+`length(cb.ind_ineq)` slack entries.
+"""
+function hessian_labels(solver::MadNLP.MadNLPSolver)
+    cb = solver.cb
+    nlp = _names_of(cb.nlp)
+    n = cb.nvar
+    labels = String[_primal_label(cb, nlp, i) for i in 1:n]
+    for k in 1:length(cb.ind_ineq)
+        cidx = Int(cb.ind_ineq[k])
+        push!(labels, "slack[" * _constraint_label(nlp, cidx) * "]")
+    end
+    return labels
 end
